@@ -13,6 +13,14 @@ contract SubscriptionToken is Initializable, ERC721Upgradeable, ERC721URIStorage
 
     address private _minter;
 
+    struct SubscriptionDetails {
+        uint256 period;
+        uint256 amount;
+        address token;
+    }
+
+    SubscriptionDetails public _subscriptionDetails;
+
     modifier onlyMinter() {
         require(_msgSender() == _minter, "SubscriptionToken: caller is not the minter");
         _;
@@ -23,13 +31,17 @@ contract SubscriptionToken is Initializable, ERC721Upgradeable, ERC721URIStorage
         _disableInitializers();
     }
 
-    function initialize(address initialOwner, string memory name, string memory symbol, address minter) initializer public {
+    function initialize(address initialOwner, string memory name, string memory symbol, address minter, bytes calldata data) initializer public {
         __ERC721_init(name, symbol);
         __ERC721URIStorage_init();
         __ERC721Burnable_init();
         __Ownable_init(initialOwner);
         __UUPSUpgradeable_init();
         _minter = minter;
+
+        (uint256 period, uint256 amount, address token) = abi.decode(data, (uint256, uint256, address));
+
+        _subscriptionDetails = SubscriptionDetails(period, amount, token);
     }
 
     function safeMint(address to, string memory uri) public onlyMinter {
@@ -60,5 +72,9 @@ contract SubscriptionToken is Initializable, ERC721Upgradeable, ERC721URIStorage
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
+    }
+
+    function getSubscriptionDetails() public view returns (SubscriptionDetails memory) {
+        return _subscriptionDetails;
     }
 }
