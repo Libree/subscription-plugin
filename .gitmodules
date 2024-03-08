@@ -9,4 +9,4 @@
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable
 [submodule "lib/modular-account"]
 	path = lib/modular-account
-	url = https://github.com/alchemyplatform/modular-account
+	url = https://github.com/@alchemy/modular-account
