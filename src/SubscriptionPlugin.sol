@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity 0.8.22;
+pragma solidity ^0.8.22;
 
-import {BasePlugin} from "@alchemy/modular-account/src/plugins/BasePlugin.sol";
+import {BasePlugin} from "@alchemy/src/plugins/BasePlugin.sol";
 import {IPluginExecutor} from "@alchemy/modular-account/src/interfaces/IPluginExecutor.sol";
 import {
     ManifestFunction,
@@ -45,7 +45,6 @@ contract SubscriptionPlugin is BasePlugin {
     function isPaymentDue(address service) external view returns (bool) {}
 
     function isSubscribed(address service) external view returns (bool) {}
-
 
     // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
     // ┃    Plugin interface functions    ┃
