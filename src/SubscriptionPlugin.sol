@@ -225,7 +225,7 @@ contract SubscriptionPlugin is BasePlugin {
     // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
     /// @inheritdoc BasePlugin
-    function onInstall(bytes calldata data) external override {}
+    function onInstall(bytes calldata) external pure override {}
 
     /// @inheritdoc BasePlugin
     function onUninstall(bytes calldata) external override {
