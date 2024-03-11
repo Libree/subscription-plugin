@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.22;
 
-import {BasePlugin} from "@alchemy/src/plugins/BasePlugin.sol";
-import {IPluginExecutor} from "@alchemy/modular-account/src/interfaces/IPluginExecutor.sol";
+import {BasePlugin} from "modular-account/src/plugins/BasePlugin.sol";
+import {IPluginExecutor} from "modular-account/src/interfaces/IPluginExecutor.sol";
 import {
     ManifestFunction,
     ManifestAssociatedFunctionType,
     ManifestAssociatedFunction,
     PluginManifest,
     PluginMetadata
-} from "@alchemy/modular-account/src/interfaces/IPlugin.sol";
-import {IMultiOwnerPlugin} from "@alchemy/modular-account/src/plugins/owner/IMultiOwnerPlugin.sol";
+} from "modular-account/src/interfaces/IPlugin.sol";
+import {IMultiOwnerPlugin} from "modular-account/src/plugins/owner/IMultiOwnerPlugin.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {SubscriptionToken, SubscriptionDetails} from "./SubscriptionNFT.sol";
 
 /// @title SubscriptionPlugin
 /// @author Libree
@@ -27,14 +29,82 @@ contract SubscriptionPlugin is BasePlugin {
     // in other words, we'll say "make sure the person calling increment is an owner of the account using our multiowner plugin"
     uint256 internal constant _MANIFEST_DEPENDENCY_INDEX_OWNER_USER_OP_VALIDATION = 0;
 
+    address[] subscribed;
+
+    // subscribed to nft
+    mapping(address => uint256) public subscribers;
+
+    /**
+     *
+     * @notice Emitted when user subscribe to nft
+     * @dev This event is emitted when a new subscriber of NFT is added
+     */
+    event AccountSubscribed(address account, uint256 subscriptionId);
+
+    /**
+     *
+     * @notice Emitted when user unsubscribe to nft
+     * @dev This event is emitted when a subscriber of NFT is removed
+     */
+    event AccountUnsubscribed(address account, uint256 subscriptionId);
+
+    // error handlers
+
+    error InsufficientBalance();
+    error AlreadySubscribed(address account, uint256 subscriptionId);
+    error CannotFindSubscriber(address account);
+
     // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
     // ┃    Execution functions    ┃
     // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
     // this can be called from a user op by the account owner
-    function subscribe(address service) external {}
+    function subscribe(address service) external {
+        uint256 subscriptionId = subscribers[msg.sender];
 
-    function unsubscribe(address service) external {}
+        if (subscriptionId > 0) {
+            revert AlreadySubscribed(msg.sender, subscriptionId);
+        }
+
+        SubscriptionToken subscriptionToken = SubscriptionToken(service);
+
+        SubscriptionDetails memory subscriptionDetails = subscriptionToken.getSubscriptionDetails();
+
+        uint256 accountBalance = IERC20(subscriptionDetails.token).balanceOf(msg.sender);
+
+        if (accountBalance < subscriptionDetails.amount) {
+            revert InsufficientBalance();
+        }
+
+        IERC20(subscriptionDetails.token).transferFrom(
+            msg.sender, subscriptionToken.owner(), subscriptionDetails.amount
+        );
+
+        uint256 tokenId = subscriptionToken.safeMint(msg.sender, subscriptionDetails.metadataUri);
+
+        subscribers[msg.sender] = tokenId;
+        subscribed.push(msg.sender);
+
+        emit AccountSubscribed(msg.sender, tokenId);
+    }
+
+    function unsubscribe() external {
+        uint256 subscriptionId = subscribers[msg.sender];
+
+        if (subscriptionId < 1) {
+            revert CannotFindSubscriber(msg.sender);
+        }
+
+        delete subscribers[msg.sender];
+
+        for (uint256 i = 0; i < subscribed.length - 1; i++) {
+            if (subscribed[i] == msg.sender) {
+                delete subscribed[i];
+            }
+        }
+
+        emit AccountUnsubscribed(msg.sender, subscriptionId);
+    }
 
     function paySubscription(address service, uint256 amount) external {}
 
@@ -51,11 +121,15 @@ contract SubscriptionPlugin is BasePlugin {
     // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
     /// @inheritdoc BasePlugin
-    function onInstall(bytes calldata) external pure override {}
+    function onInstall(bytes calldata data) external override {}
 
     /// @inheritdoc BasePlugin
-    function onUninstall(bytes calldata) external pure override {
-        //TODO: Check if there is any subscription and cancel it
+    function onUninstall(bytes calldata) external override {
+        for (uint256 i = 0; i < subscribed.length - 1; i++) {
+            delete subscribers[subscribed[i]];
+        }
+
+        delete subscribed;
     }
 
     /// @inheritdoc BasePlugin
