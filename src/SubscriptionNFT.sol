@@ -12,7 +12,6 @@ struct SubscriptionDetails {
     uint256 period;
     uint256 amount;
     address token;
-    string metadataUri;
 }
 
 contract SubscriptionToken is
@@ -26,6 +25,8 @@ contract SubscriptionToken is
     uint256 private _nextTokenId;
 
     address private _minter;
+
+    string public metadataUrl;
 
     SubscriptionDetails public _subscriptionDetails;
 
@@ -43,6 +44,7 @@ contract SubscriptionToken is
         address initialOwner,
         string memory name,
         string memory symbol,
+        string memory metadataUri,
         address minter,
         bytes calldata data
     ) public initializer {
@@ -52,17 +54,17 @@ contract SubscriptionToken is
         __Ownable_init(initialOwner);
         __UUPSUpgradeable_init();
         _minter = minter;
+        metadataUri = metadataUri;
 
-        (uint256 period, uint256 amount, address token, string memory metadataUri) =
-            abi.decode(data, (uint256, uint256, address, string));
+        (uint256 period, uint256 amount, address token) = abi.decode(data, (uint256, uint256, address));
 
-        _subscriptionDetails = SubscriptionDetails(period, amount, token, metadataUri);
+        _subscriptionDetails = SubscriptionDetails(period, amount, token);
     }
 
-    function safeMint(address to, string memory uri) public onlyMinter returns (uint256) {
+    function safeMint(address to) public onlyMinter returns (uint256) {
         uint256 tokenId = _nextTokenId++;
         _safeMint(to, tokenId);
-        _setTokenURI(tokenId, uri);
+        _setTokenURI(tokenId, metadataUrl);
 
         return tokenId;
     }

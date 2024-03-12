@@ -48,7 +48,7 @@ contract SubscriptionPlugin is BasePlugin {
     SubscriberRegistered[] subscribersRegistered;
 
     // subscribed to nft
-    mapping(address => Subscription) public subscriptions;
+    mapping(address => Subscription) private subscriptions;
 
     /**
      *
@@ -81,12 +81,14 @@ contract SubscriptionPlugin is BasePlugin {
 
     // error handlers
 
+    error NotValidAddress(address subscription);
+    error NotValidSubscriptionNFT(address subscription);
     error InsufficientBalance();
     error AlreadySubscribed(address account, address subscription, uint256 tokenId);
     error AlreadyUnsubscribed(address account, address subscription);
     error AccountNotSubscribed(address account, address subscription);
     error SubscriptionNotFound(address subscription);
-    error IsPaymentDue(address account, address subscription, uint256 lastPayment, uint256 currentDate);
+    error SubscriptionIsActive(address account, address subscription, uint256 lastPayment, uint256 currentDate);
 
     // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
     // ┃    Execution functions    ┃
@@ -97,15 +99,13 @@ contract SubscriptionPlugin is BasePlugin {
      * @param service subscription which sender will subscribe
      */
     function subscribe(address service) external {
+        (SubscriptionToken subscriptionToken, SubscriptionDetails memory subscriptionDetails) =
+            _getSubscriptionDetails(service);
         Subscription storage subscription = subscriptions[service];
 
         if (subscription.isInitialized && isSubscribed(service, msg.sender)) {
             revert AlreadySubscribed(msg.sender, service, subscription.subscribers[msg.sender].tokenId);
         }
-
-        SubscriptionToken subscriptionToken = SubscriptionToken(service);
-
-        SubscriptionDetails memory subscriptionDetails = subscriptionToken.getSubscriptionDetails();
 
         uint256 accountBalance = IERC20(subscriptionDetails.token).balanceOf(msg.sender);
 
@@ -113,11 +113,11 @@ contract SubscriptionPlugin is BasePlugin {
             revert InsufficientBalance();
         }
 
-        IERC20(subscriptionDetails.token).transferFrom(
-            msg.sender, subscriptionToken.owner(), subscriptionDetails.amount
+        IPluginExecutor(subscriptionDetails.token).executeFromPluginExternal(
+            msg.sender, subscriptionDetails.amount, "0x"
         );
 
-        uint256 tokenId = subscriptionToken.safeMint(msg.sender, subscriptionDetails.metadataUri);
+        uint256 tokenId = subscriptionToken.safeMint(msg.sender);
 
         if (!subscription.isInitialized) {
             subscription.isInitialized = true;
@@ -126,7 +126,7 @@ contract SubscriptionPlugin is BasePlugin {
         subscription.subscribers[msg.sender].tokenId = tokenId;
         subscription.subscribers[msg.sender].lastPayment = block.timestamp;
 
-        (SubscriberRegistered memory subscriberRegistered, uint256 index) = _find_subscriberRegistered(msg.sender);
+        (SubscriberRegistered memory subscriberRegistered, uint256 index) = _findSubscriberRegistered(msg.sender);
 
         if (subscriberRegistered.tokenId == 0) {
             subscriberRegistered.account = msg.sender;
@@ -167,18 +167,16 @@ contract SubscriptionPlugin is BasePlugin {
      * @param service subscription which sender will update payment
      */
     function paySubscription(address service) external {
+        (, SubscriptionDetails memory subscriptionDetails) = _getSubscriptionDetails(service);
+
         if (!isPaymentDue(service, msg.sender)) {
-            revert IsPaymentDue(
+            revert SubscriptionIsActive(
                 msg.sender, service, subscriptions[service].subscribers[msg.sender].lastPayment, block.timestamp
             );
         }
 
-        SubscriptionToken subscriptionToken = SubscriptionToken(service);
-
-        SubscriptionDetails memory subscriptionDetails = subscriptionToken.getSubscriptionDetails();
-
-        IERC20(subscriptionDetails.token).transferFrom(
-            msg.sender, subscriptionToken.owner(), subscriptionDetails.amount
+        IPluginExecutor(subscriptionDetails.token).executeFromPluginExternal(
+            msg.sender, subscriptionDetails.amount, "0x"
         );
 
         subscriptions[service].subscribers[msg.sender].lastPayment = block.timestamp;
@@ -196,6 +194,8 @@ contract SubscriptionPlugin is BasePlugin {
      * @param account account to check
      */
     function isPaymentDue(address service, address account) public view returns (bool) {
+        (, SubscriptionDetails memory subscriptionDetails) = _getSubscriptionDetails(service);
+
         if (subscriptions[service].isInitialized) {
             revert SubscriptionNotFound(service);
         }
@@ -203,10 +203,6 @@ contract SubscriptionPlugin is BasePlugin {
         if (!isSubscribed(service, account)) {
             revert AccountNotSubscribed(account, service);
         }
-
-        SubscriptionToken subscriptionToken = SubscriptionToken(service);
-
-        SubscriptionDetails memory subscriptionDetails = subscriptionToken.getSubscriptionDetails();
 
         return subscriptionDetails.period + subscriptions[service].subscribers[account].lastPayment < block.timestamp;
     }
@@ -289,7 +285,7 @@ contract SubscriptionPlugin is BasePlugin {
         return metadata;
     }
 
-    function _find_subscriberRegistered(address account)
+    function _findSubscriberRegistered(address account)
         internal
         view
         returns (SubscriberRegistered memory, uint256 index)
@@ -306,5 +302,23 @@ contract SubscriptionPlugin is BasePlugin {
         }
 
         return (subscriberRegistered, i);
+    }
+
+    function _getSubscriptionDetails(address subscription)
+        internal
+        view
+        returns (SubscriptionToken, SubscriptionDetails memory)
+    {
+        if (subscription.code.length == 0) {
+            revert NotValidAddress(subscription);
+        }
+
+        SubscriptionToken subscriptionToken = SubscriptionToken(subscription);
+
+        try subscriptionToken.getSubscriptionDetails() returns (SubscriptionDetails memory subscriptionDetails) {
+            return (subscriptionToken, subscriptionDetails);
+        } catch {
+            revert NotValidSubscriptionNFT(subscription);
+        }
     }
 }
