@@ -12,7 +12,7 @@ import {
 } from "modular-account/src/interfaces/IPlugin.sol";
 import {IMultiOwnerPlugin} from "modular-account/src/plugins/owner/IMultiOwnerPlugin.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {SubscriptionToken, SubscriptionDetails} from "./SubscriptionNFT.sol";
+import {SubscriptionToken, SubscriptionDetails} from "./SubscriptionToken.sol";
 
 /// @title SubscriptionPlugin
 /// @author Libree
@@ -113,8 +113,8 @@ contract SubscriptionPlugin is BasePlugin {
             revert InsufficientBalance();
         }
 
-        IPluginExecutor(subscriptionDetails.token).executeFromPluginExternal(
-            msg.sender, subscriptionDetails.amount, "0x"
+        IERC20(subscriptionDetails.token).transferFrom(
+            msg.sender, subscriptionToken.owner(), subscriptionDetails.amount
         );
 
         uint256 tokenId = subscriptionToken.safeMint(msg.sender);
@@ -128,7 +128,7 @@ contract SubscriptionPlugin is BasePlugin {
 
         (SubscriberRegistered memory subscriberRegistered, uint256 index) = _findSubscriberRegistered(msg.sender);
 
-        if (subscriberRegistered.tokenId == 0) {
+        if (subscriberRegistered.subscriptions.length == 0) {
             subscriberRegistered.account = msg.sender;
             subscriberRegistered.tokenId = tokenId;
             subscribersRegistered.push(subscriberRegistered);
@@ -167,7 +167,8 @@ contract SubscriptionPlugin is BasePlugin {
      * @param service subscription which sender will update payment
      */
     function paySubscription(address service) external {
-        (, SubscriptionDetails memory subscriptionDetails) = _getSubscriptionDetails(service);
+        (SubscriptionToken subscriptionToken, SubscriptionDetails memory subscriptionDetails) =
+            _getSubscriptionDetails(service);
 
         if (!isPaymentDue(service, msg.sender)) {
             revert SubscriptionIsActive(
@@ -175,8 +176,8 @@ contract SubscriptionPlugin is BasePlugin {
             );
         }
 
-        IPluginExecutor(subscriptionDetails.token).executeFromPluginExternal(
-            msg.sender, subscriptionDetails.amount, "0x"
+        IERC20(subscriptionDetails.token).transferFrom(
+            msg.sender, subscriptionToken.owner(), subscriptionDetails.amount
         );
 
         subscriptions[service].subscribers[msg.sender].lastPayment = block.timestamp;
@@ -213,7 +214,7 @@ contract SubscriptionPlugin is BasePlugin {
      * @param account account to check
      */
     function isSubscribed(address service, address account) public view returns (bool) {
-        return subscriptions[service].subscribers[account].tokenId > 0;
+        return subscriptions[service].subscribers[account].lastPayment > 0;
     }
 
     // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -225,10 +226,10 @@ contract SubscriptionPlugin is BasePlugin {
 
     /// @inheritdoc BasePlugin
     function onUninstall(bytes calldata) external override {
-        for (uint256 i = 0; i < subscribersRegistered.length - 1; i++) {
+        for (uint256 i = 0; i < subscribersRegistered.length; i++) {
             SubscriberRegistered memory subscriberRegistered = subscribersRegistered[i];
 
-            for (uint256 c = 0; c < subscriberRegistered.subscriptions.length - 1; c++) {
+            for (uint256 c = 0; c < subscriberRegistered.subscriptions.length; c++) {
                 delete subscriptions[subscriberRegistered.subscriptions[c]].subscribers[subscriberRegistered.account];
 
                 subscriptions[subscriberRegistered.subscriptions[c]].isInitialized = false;
@@ -285,18 +286,14 @@ contract SubscriptionPlugin is BasePlugin {
         return metadata;
     }
 
-    function _findSubscriberRegistered(address account)
-        internal
-        view
-        returns (SubscriberRegistered memory, uint256 index)
-    {
+    function _findSubscriberRegistered(address account) internal view returns (SubscriberRegistered memory, uint256) {
         SubscriberRegistered memory subscriberRegistered;
+
         uint256 i = 0;
 
-        for (i; i < subscribersRegistered.length - 1; i++) {
+        for (i = 0; i < subscribersRegistered.length; i++) {
             if (subscribersRegistered[i].account == account) {
                 subscriberRegistered = subscribersRegistered[i];
-
                 break;
             }
         }

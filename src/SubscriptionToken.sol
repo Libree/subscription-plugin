@@ -54,6 +54,7 @@ contract SubscriptionToken is
         __Ownable_init(initialOwner);
         __UUPSUpgradeable_init();
         _minter = minter;
+
         metadataUri = metadataUri;
 
         (uint256 period, uint256 amount, address token) = abi.decode(data, (uint256, uint256, address));
