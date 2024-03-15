@@ -197,7 +197,7 @@ contract SubscriptionPlugin is BasePlugin {
     function isPaymentDue(address service, address account) public view returns (bool) {
         (, SubscriptionDetails memory subscriptionDetails) = _getSubscriptionDetails(service);
 
-        if (subscriptions[service].isInitialized) {
+        if (!subscriptions[service].isInitialized) {
             revert SubscriptionNotFound(service);
         }
 
