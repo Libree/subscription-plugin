@@ -7,6 +7,10 @@ import {SubscriptionPlugin} from "../src/SubscriptionPlugin.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {Upgrades} from "@openzeppelin/foundry-upgrades/Upgrades.sol";
+import {MultiOwnerModularAccountFactory} from "modular-account/src/factory/MultiOwnerModularAccountFactory.sol";
+import {IEntryPoint} from "modular-account/src/interfaces/erc4337/IEntryPoint.sol";
+import {UpgradeableModularAccount} from "modular-account/src/account/UpgradeableModularAccount.sol";
+import {EntryPoint} from "@eth-infinitism/account-abstraction/core/EntryPoint.sol";
 
 contract SubscriptionPluginTest is Test {
     address subscriptionTokenProxy;
@@ -15,6 +19,8 @@ contract SubscriptionPluginTest is Test {
 
     address owner = vm.addr(1);
     address usdc = 0x52D800ca262522580CeBAD275395ca6e7598C014;
+    address entryPoint = IEntryPoint(address(new EntryPoint()));
+    MultiOwnerModularAccountFactory smartAccountFactory;
 
     function setUp() public {
         vm.startPrank(owner);
@@ -23,6 +29,16 @@ contract SubscriptionPluginTest is Test {
         bytes memory data = abi.encode(30 days, 100, usdc);
 
         subscriptionPlugin = new SubscriptionPlugin();
+
+        address impl = address(new UpgradeableModularAccount(entryPoint));
+
+        smartAccountFactory = new MultiOwnerModularAccountFactory(
+            address(subscriber),
+            address(subscriptionPlugin),
+            impl,
+            keccak256(abi.encode(subscriptionPlugin.pluginManifest())),
+            entryPoint
+        );
 
         subscriptionTokenProxy = Upgrades.deployUUPSProxy(
             "SubscriptionToken.sol",
@@ -49,13 +65,19 @@ contract SubscriptionPluginTest is Test {
     }
 
     function testSubscribe() public {
-        address subscriber = vm.addr(2);
+        bytes memory data = abi.encode();
+
+        UpgradeableModularAccount account = UpgradeableModularAccount(payable(factory.createAccount(0, owners)));
+        address subscriber = address(account);
+
         vm.startPrank(subscriber);
         deal(subscriber, 1 ether);
         deal(usdc, subscriber, 1000 ether);
 
         IERC20(usdc).approve(address(subscriptionPlugin), 1000 ether);
 
+        subscriptionPlugin.pluginManifest();
+        subscriptionPlugin.onInstall(data);
         subscriptionPlugin.subscribe(subscriptionTokenProxy);
 
         vm.stopPrank();

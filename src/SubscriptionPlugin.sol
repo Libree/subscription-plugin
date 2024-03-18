@@ -7,6 +7,7 @@ import {
     ManifestFunction,
     ManifestAssociatedFunctionType,
     ManifestAssociatedFunction,
+    ManifestExternalCallPermission,
     PluginManifest,
     PluginMetadata
 } from "modular-account/src/interfaces/IPlugin.sol";
@@ -22,6 +23,8 @@ contract SubscriptionPlugin is BasePlugin {
     string public constant NAME = "Subscription Plugin";
     string public constant VERSION = "1.0.0";
     string public constant AUTHOR = "Libree";
+    // address public constant TARGET_ERC20_CONTRACT = 0x52D800ca262522580CeBAD275395ca6e7598C014;
+    // bytes4 public constant TRANSFERFROM_SELECTOR = bytes4(keccak256(bytes("transfer(address,uint256)")));
 
     struct Subscriber {
         uint256 tokenId;
@@ -113,8 +116,10 @@ contract SubscriptionPlugin is BasePlugin {
             revert InsufficientBalance();
         }
 
-        IERC20(subscriptionDetails.token).transferFrom(
-            msg.sender, subscriptionToken.owner(), subscriptionDetails.amount
+        IPluginExecutor(msg.sender).executeFromPluginExternal(
+            address(subscriptionDetails.token),
+            0,
+            abi.encodeCall(IERC20.transfer, (subscriptionToken.owner(), subscriptionDetails.amount))
         );
 
         uint256 tokenId = subscriptionToken.safeMint(msg.sender);
@@ -176,8 +181,10 @@ contract SubscriptionPlugin is BasePlugin {
             );
         }
 
-        IERC20(subscriptionDetails.token).transferFrom(
-            msg.sender, subscriptionToken.owner(), subscriptionDetails.amount
+        IPluginExecutor(msg.sender).executeFromPluginExternal(
+            address(subscriptionDetails.token),
+            0,
+            abi.encodeCall(IERC20.transfer, (subscriptionToken.owner(), subscriptionDetails.amount))
         );
 
         subscriptions[service].subscribers[msg.sender].lastPayment = block.timestamp;
@@ -270,6 +277,16 @@ contract SubscriptionPlugin is BasePlugin {
                 dependencyIndex: 0
             })
         });
+
+        // bytes4[] memory permittedExternalSelectors = new bytes4[](1);
+        // permittedExternalSelectors[0] = TRANSFERFROM_SELECTOR;
+
+        // manifest.permittedExternalCalls = new ManifestExternalCallPermission[](1);
+        // manifest.permittedExternalCalls[0] = ManifestExternalCallPermission({
+        //     externalAddress: TARGET_ERC20_CONTRACT,
+        //     permitAnySelector: false,
+        //     selectors: permittedExternalSelectors
+        // });
 
         manifest.permitAnyExternalAddress = true;
         manifest.canSpendNativeToken = true;
