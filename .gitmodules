@@ -15,7 +15,7 @@
 	branch = releases/v4.9.3
 [submodule "lib/modular-account"]
 	path = lib/modular-account
-	url = https://github.com/@alchemy/modular-account
+	url = https://github.com/alchemyplatform/modular-account
 [submodule "lib/openzeppelin-foundry-upgrades"]
 	path = lib/openzeppelin-foundry-upgrades
 	url = https://github.com/OpenZeppelin/openzeppelin-foundry-upgrades
