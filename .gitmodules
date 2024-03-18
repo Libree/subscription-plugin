@@ -14,7 +14,7 @@
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable
 	branch = releases/v4.9.3
 [submodule "lib/openzeppelin-contracts-upgradeable"]
-	path = lib/openzeppelin-contracts-upgradeable
+	path = lib/openzeppelin-contracts-upgradeable-v5
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable
 	branch = releases/v5.0.2
 [submodule "lib/modular-account"]
