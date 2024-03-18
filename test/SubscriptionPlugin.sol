@@ -5,6 +5,7 @@ import {Test, StdUtils} from "forge-std/Test.sol";
 import {SubscriptionToken} from "../src/SubscriptionToken.sol";
 import {SubscriptionPlugin} from "../src/SubscriptionPlugin.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {Upgrades} from "@openzeppelin/foundry-upgrades/Upgrades.sol";
 import {MultiOwnerModularAccountFactory} from "modular-account/src/factory/MultiOwnerModularAccountFactory.sol";
@@ -40,11 +41,14 @@ contract SubscriptionPluginTest is Test {
             entryPoint
         );
 
-        subscriptionTokenProxy = Upgrades.deployUUPSProxy(
-            "SubscriptionToken.sol",
+        subscriptionToke = new SubscriptionToken;
+
+        subscriptionTokenProxy = SubscriptionToken(
+            new ERC1967Proxy(address(subscriptionToken),
             abi.encodeCall(
                 SubscriptionToken.initialize,
                 (owner, "TestNFT", "TEST", "https://example.com", address(subscriptionPlugin), data)
+            )    
             )
         );
 
