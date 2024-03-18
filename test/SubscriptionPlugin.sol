@@ -7,7 +7,6 @@ import {SubscriptionPlugin} from "../src/SubscriptionPlugin.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {Upgrades} from "@openzeppelin/foundry-upgrades/Upgrades.sol";
 import {MultiOwnerModularAccountFactory} from "modular-account/src/factory/MultiOwnerModularAccountFactory.sol";
 import {IEntryPoint} from "modular-account/src/interfaces/erc4337/IEntryPoint.sol";
 import {UpgradeableModularAccount} from "modular-account/src/account/UpgradeableModularAccount.sol";
