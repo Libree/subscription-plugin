@@ -5,8 +5,8 @@
 	path = lib/openzeppelin-contracts
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
 	branch = releases/v4.9.3
-[submodule "lib/openzeppelin-contracts/v5"]
-	path = lib/openzeppelin-contracts/v5
+[submodule "lib/openzeppelin-contracts/v5.0.2"]
+	path = lib/openzeppelin-contracts/v5.0.2
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
 	branch = releases/v5.0.2
 [submodule "lib/openzeppelin-contracts-upgradeable"]
