@@ -19,7 +19,7 @@ contract SubscriptionPluginTest is Test {
 
     address owner = vm.addr(1);
     address usdc = 0x52D800ca262522580CeBAD275395ca6e7598C014;
-    address entryPoint = IEntryPoint(address(new EntryPoint()));
+    IEntryPoint entryPoint = IEntryPoint(address(new EntryPoint()));
     MultiOwnerModularAccountFactory smartAccountFactory;
 
     function setUp() public {
@@ -33,20 +33,20 @@ contract SubscriptionPluginTest is Test {
         address impl = address(new UpgradeableModularAccount(entryPoint));
 
         smartAccountFactory = new MultiOwnerModularAccountFactory(
-            address(subscriber),
+            address(owner),
             address(subscriptionPlugin),
             impl,
             keccak256(abi.encode(subscriptionPlugin.pluginManifest())),
             entryPoint
         );
 
-        subscriptionToke = new SubscriptionToken;
+        subscriptionToken = new SubscriptionToken();
 
-        subscriptionTokenProxy = SubscriptionToken(
+        subscriptionTokenProxy = address(
             new ERC1967Proxy(address(subscriptionToken),
             abi.encodeCall(
                 SubscriptionToken.initialize,
-                (owner, "TestNFT", "TEST", "https://example.com", address(subscriptionPlugin), data)
+                ("TestNFT", "TEST", "https://example.com", address(subscriptionPlugin), data)
             )    
             )
         );
@@ -70,8 +70,13 @@ contract SubscriptionPluginTest is Test {
     function testSubscribe() public {
         bytes memory data = abi.encode();
 
-        UpgradeableModularAccount account = UpgradeableModularAccount(payable(factory.createAccount(0, owners)));
-        address subscriber = address(account);
+        address subscriber = vm.addr(2);
+        address[] storage owners;
+
+        owners.push(subscriber);
+
+        UpgradeableModularAccount account =
+            UpgradeableModularAccount(payable(smartAccountFactory.createAccount(0, owners)));
 
         vm.startPrank(subscriber);
         deal(subscriber, 1 ether);
@@ -120,11 +125,12 @@ contract SubscriptionPluginTest is Test {
         bytes memory data = abi.encode(180 days, 500, usdc);
 
         vm.startPrank(owner);
-        address subscriptionTokenProxy2 = Upgrades.deployUUPSProxy(
-            "SubscriptionToken.sol",
+        address subscriptionTokenProxy2 = address(
+            new ERC1967Proxy(address(subscriptionToken),
             abi.encodeCall(
                 SubscriptionToken.initialize,
-                (owner, "TestNFT", "TEST", "https://example.com", address(subscriptionPlugin), data)
+                ("TestNFT", "TEST", "https://example.com", address(subscriptionPlugin), data)
+            )    
             )
         );
 
@@ -181,20 +187,22 @@ contract SubscriptionPluginTest is Test {
     function testSubscriberDifferentSubscriptions() public {
         vm.startPrank(owner);
         bytes memory data = abi.encode(180 days, 500, usdc);
-        address subscriptionTokenProxy2 = Upgrades.deployUUPSProxy(
-            "SubscriptionToken.sol",
+        address subscriptionTokenProxy2 = address(
+            new ERC1967Proxy(address(subscriptionToken),
             abi.encodeCall(
                 SubscriptionToken.initialize,
-                (owner, "TestNFT", "TEST", "https://example.com", address(subscriptionPlugin), data)
+                ("TestNFT", "TEST", "https://example.com", address(subscriptionPlugin), data)
+            )    
             )
         );
 
         bytes memory data2 = abi.encode(180 days, 300, usdc);
-        address subscriptionTokenProxy3 = Upgrades.deployUUPSProxy(
-            "SubscriptionToken.sol",
+        address subscriptionTokenProxy3 = address(
+            new ERC1967Proxy(address(subscriptionToken),
             abi.encodeCall(
                 SubscriptionToken.initialize,
-                (owner, "TestNFT", "TEST", "https://example.com", address(subscriptionPlugin), data2)
+                ("TestNFT", "TEST", "https://example.com", address(subscriptionPlugin), data)
+            )    
             )
         );
 
@@ -329,20 +337,22 @@ contract SubscriptionPluginTest is Test {
     function testUninstallPluginWithData() public {
         vm.startPrank(owner);
         bytes memory data = abi.encode(180 days, 500, usdc);
-        address subscriptionTokenProxy2 = Upgrades.deployUUPSProxy(
-            "SubscriptionToken.sol",
+        address subscriptionTokenProxy2 = address(
+            new ERC1967Proxy(address(subscriptionToken),
             abi.encodeCall(
                 SubscriptionToken.initialize,
-                (owner, "TestNFT", "TEST", "https://example.com", address(subscriptionPlugin), data)
+                ("TestNFT", "TEST", "https://example.com", address(subscriptionPlugin), data)
+            )    
             )
         );
 
         bytes memory data2 = abi.encode(180 days, 300, usdc);
-        address subscriptionTokenProxy3 = Upgrades.deployUUPSProxy(
-            "SubscriptionToken.sol",
+        address subscriptionTokenProxy3 = address(
+            new ERC1967Proxy(address(subscriptionToken),
             abi.encodeCall(
                 SubscriptionToken.initialize,
-                (owner, "TestNFT", "TEST", "https://example.com", address(subscriptionPlugin), data2)
+                ("TestNFT", "TEST", "https://example.com", address(subscriptionPlugin), data)
+            )    
             )
         );
 

@@ -41,7 +41,6 @@ contract SubscriptionToken is
     }
 
     function initialize(
-        address initialOwner,
         string memory name,
         string memory symbol,
         string memory metadataUri,
@@ -51,7 +50,7 @@ contract SubscriptionToken is
         __ERC721_init(name, symbol);
         __ERC721URIStorage_init();
         __ERC721Burnable_init();
-        __Ownable_init(initialOwner);
+        __Ownable_init();
         __UUPSUpgradeable_init();
         _minter = minter;
 
