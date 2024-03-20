@@ -8,6 +8,7 @@ interface ISubscriptionPlugin {
         RUNTIME_VALIDATION_OWNER_OR_SELF,
         USER_OP_VALIDATION_OWNER
     }
+
     /**
      *
      * @notice Emitted when user subscribe to nft
@@ -16,7 +17,6 @@ interface ISubscriptionPlugin {
      * @param account account to subscribe to the subscription
      * @param subscriptionId the subscription id which is equal to tokenId
      */
-
     event AccountSubscribed(address subscription, address account, uint256 subscriptionId);
 
     /**
