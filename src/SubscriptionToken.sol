@@ -80,6 +80,10 @@ contract SubscriptionToken is
         return super.tokenURI(tokenId);
     }
 
+    function _burn(uint256 tokenId) internal override(ERC721Upgradeable, ERC721URIStorageUpgradeable) {
+        super._burn(tokenId);
+    }
+
     function supportsInterface(bytes4 interfaceId)
         public
         view

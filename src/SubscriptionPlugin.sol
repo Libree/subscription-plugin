@@ -14,17 +14,16 @@ import {
 import {IMultiOwnerPlugin} from "modular-account/src/plugins/owner/IMultiOwnerPlugin.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {SubscriptionToken, SubscriptionDetails} from "./SubscriptionToken.sol";
+import {ISubscriptionPlugin} from "./interfaces/ISubscriptionPlugin.sol";
 
 /// @title SubscriptionPlugin
 /// @author Libree
 /// @notice This plugin lets us subscribe to services!
-contract SubscriptionPlugin is BasePlugin {
+contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
     // metadata used by the pluginMetadata() method down below
     string public constant NAME = "Subscription Plugin";
     string public constant VERSION = "1.0.0";
     string public constant AUTHOR = "Libree";
-    // address public constant TARGET_ERC20_CONTRACT = 0x52D800ca262522580CeBAD275395ca6e7598C014;
-    // bytes4 public constant TRANSFERFROM_SELECTOR = bytes4(keccak256(bytes("transfer(address,uint256)")));
 
     struct Subscriber {
         uint256 tokenId;
@@ -32,7 +31,6 @@ contract SubscriptionPlugin is BasePlugin {
     }
 
     struct SubscriberRegistered {
-        uint256 tokenId;
         address account;
         address[] subscriptions;
     }
@@ -52,46 +50,6 @@ contract SubscriptionPlugin is BasePlugin {
 
     // subscribed to nft
     mapping(address => Subscription) private subscriptions;
-
-    /**
-     *
-     * @notice Emitted when user subscribe to nft
-     * @dev This event is emitted when a new subscriber of NFT is added
-     * @param subscription subscription address
-     * @param account account to subscribe to the subscription
-     * @param subscriptionId the subscription id which is equal to tokenId
-     */
-    event AccountSubscribed(address subscription, address account, uint256 subscriptionId);
-
-    /**
-     *
-     * @notice Emitted when user unsubscribe to nft
-     * @dev This event is emitted when a subscriber of NFT is removed
-     * @param subscription subscription address
-     * @param account account to unsubscribe to the subscription
-     * @param subscriptionId the subscription id which is equal to tokenId
-     */
-    event AccountUnsubscribed(address subscription, address account, uint256 subscriptionId);
-
-    /**
-     * @notice Emitted when user update subscription payment
-     * @dev This event is emitted when payment is updated
-     * @param subscription subscription address
-     * @param account account to unsubscribe to the subscription
-     * @param subscriptionId the subscription id which is equal to tokenId
-     */
-    event SubscriptionPayment(address subscription, address account, uint256 subscriptionId);
-
-    // error handlers
-
-    error NotValidAddress(address subscription);
-    error NotValidSubscriptionNFT(address subscription);
-    error InsufficientBalance();
-    error AlreadySubscribed(address account, address subscription, uint256 tokenId);
-    error AlreadyUnsubscribed(address account, address subscription);
-    error AccountNotSubscribed(address account, address subscription);
-    error SubscriptionNotFound(address subscription);
-    error SubscriptionIsActive(address account, address subscription, uint256 lastPayment, uint256 currentDate);
 
     // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
     // ┃    Execution functions    ┃
@@ -135,7 +93,6 @@ contract SubscriptionPlugin is BasePlugin {
 
         if (subscriberRegistered.subscriptions.length == 0) {
             subscriberRegistered.account = msg.sender;
-            subscriberRegistered.tokenId = tokenId;
             subscribersRegistered.push(subscriberRegistered);
             subscribersRegistered[subscribersRegistered.length - 1].subscriptions.push(service);
         } else {
@@ -158,6 +115,18 @@ contract SubscriptionPlugin is BasePlugin {
 
         if (!isSubscribed(service, msg.sender)) {
             revert AccountNotSubscribed(msg.sender, service);
+        }
+
+        for (uint256 i = 0; i < subscribersRegistered.length; i++) {
+            if (subscribersRegistered[i].account == msg.sender) {
+                address[] memory subscriptionsRegistered = subscribersRegistered[i].subscriptions;
+
+                for (uint256 c = 0; c < subscriptionsRegistered.length; c++) {
+                    if (subscriptionsRegistered[c] == service) {
+                        _removeSubscription(i, c);
+                    }
+                }
+            }
         }
 
         uint256 tokenId = subscription.subscribers[msg.sender].tokenId;
@@ -224,6 +193,15 @@ contract SubscriptionPlugin is BasePlugin {
         return subscriptions[service].subscribers[account].lastPayment > 0;
     }
 
+    /**
+     * @notice list all the subscriptions that belong to the sender
+     */
+    function getAcccountDetails() public view returns (SubscriberRegistered memory) {
+        (SubscriberRegistered memory subscriber,) = _findSubscriberRegistered(msg.sender);
+
+        return subscriber;
+    }
+
     // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
     // ┃    Plugin interface functions    ┃
     // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
@@ -234,27 +212,30 @@ contract SubscriptionPlugin is BasePlugin {
     /// @inheritdoc BasePlugin
     function onUninstall(bytes calldata) external override {
         for (uint256 i = 0; i < subscribersRegistered.length; i++) {
-            SubscriberRegistered memory subscriberRegistered = subscribersRegistered[i];
+            if (subscribersRegistered[i].account == msg.sender) {
+                address[] memory subscriptionsRegistered = subscribersRegistered[i].subscriptions;
 
-            for (uint256 c = 0; c < subscriberRegistered.subscriptions.length; c++) {
-                delete subscriptions[subscriberRegistered.subscriptions[c]].subscribers[subscriberRegistered.account];
-
-                subscriptions[subscriberRegistered.subscriptions[c]].isInitialized = false;
+                for (uint256 c = 0; c < subscriptionsRegistered.length; c++) {
+                    delete subscriptions[subscriptionsRegistered[c]].subscribers[msg.sender];
+                }
             }
-        }
 
-        delete subscribersRegistered;
+            _removeSubscriberRegistered(i);
+        }
     }
 
     /// @inheritdoc BasePlugin
     function pluginManifest() external pure override returns (PluginManifest memory) {
         PluginManifest memory manifest;
 
-        manifest.dependencyInterfaceIds = new bytes4[](1);
+        manifest.dependencyInterfaceIds = new bytes4[](2);
         manifest.dependencyInterfaceIds[0] = type(IMultiOwnerPlugin).interfaceId;
+        manifest.dependencyInterfaceIds[1] = type(IMultiOwnerPlugin).interfaceId;
 
-        manifest.executionFunctions = new bytes4[](1);
+        manifest.executionFunctions = new bytes4[](3);
         manifest.executionFunctions[0] = this.subscribe.selector;
+        manifest.executionFunctions[1] = this.unsubscribe.selector;
+        manifest.executionFunctions[2] = this.paySubscription.selector;
 
         ManifestFunction memory ownerUserOpValidationFunction = ManifestFunction({
             functionType: ManifestAssociatedFunctionType.DEPENDENCY,
@@ -262,13 +243,23 @@ contract SubscriptionPlugin is BasePlugin {
             dependencyIndex: _MANIFEST_DEPENDENCY_INDEX_OWNER_USER_OP_VALIDATION
         });
 
-        manifest.userOpValidationFunctions = new ManifestAssociatedFunction[](1);
+        manifest.userOpValidationFunctions = new ManifestAssociatedFunction[](3);
         manifest.userOpValidationFunctions[0] = ManifestAssociatedFunction({
             executionSelector: this.subscribe.selector,
             associatedFunction: ownerUserOpValidationFunction
         });
 
-        manifest.preRuntimeValidationHooks = new ManifestAssociatedFunction[](1);
+        manifest.userOpValidationFunctions[1] = ManifestAssociatedFunction({
+            executionSelector: this.unsubscribe.selector,
+            associatedFunction: ownerUserOpValidationFunction
+        });
+
+        manifest.userOpValidationFunctions[2] = ManifestAssociatedFunction({
+            executionSelector: this.paySubscription.selector,
+            associatedFunction: ownerUserOpValidationFunction
+        });
+
+        manifest.preRuntimeValidationHooks = new ManifestAssociatedFunction[](3);
         manifest.preRuntimeValidationHooks[0] = ManifestAssociatedFunction({
             executionSelector: this.subscribe.selector,
             associatedFunction: ManifestFunction({
@@ -278,15 +269,23 @@ contract SubscriptionPlugin is BasePlugin {
             })
         });
 
-        // bytes4[] memory permittedExternalSelectors = new bytes4[](1);
-        // permittedExternalSelectors[0] = TRANSFERFROM_SELECTOR;
+        manifest.preRuntimeValidationHooks[1] = ManifestAssociatedFunction({
+            executionSelector: this.unsubscribe.selector,
+            associatedFunction: ManifestFunction({
+                functionType: ManifestAssociatedFunctionType.PRE_HOOK_ALWAYS_DENY,
+                functionId: 0,
+                dependencyIndex: 0
+            })
+        });
 
-        // manifest.permittedExternalCalls = new ManifestExternalCallPermission[](1);
-        // manifest.permittedExternalCalls[0] = ManifestExternalCallPermission({
-        //     externalAddress: TARGET_ERC20_CONTRACT,
-        //     permitAnySelector: false,
-        //     selectors: permittedExternalSelectors
-        // });
+        manifest.preRuntimeValidationHooks[2] = ManifestAssociatedFunction({
+            executionSelector: this.paySubscription.selector,
+            associatedFunction: ManifestFunction({
+                functionType: ManifestAssociatedFunctionType.PRE_HOOK_ALWAYS_DENY,
+                functionId: 0,
+                dependencyIndex: 0
+            })
+        });
 
         manifest.permitAnyExternalAddress = true;
         manifest.canSpendNativeToken = true;
@@ -334,5 +333,26 @@ contract SubscriptionPlugin is BasePlugin {
         } catch {
             revert NotValidSubscriptionNFT(subscription);
         }
+    }
+
+    function _removeSubscriberRegistered(uint256 index) internal {
+        for (uint256 i = index; i < subscribersRegistered.length - 1; i++) {
+            subscribersRegistered[i] = subscribersRegistered[i + 1];
+        }
+
+        subscribersRegistered.pop();
+    }
+
+    function _removeSubscription(uint256 indexSubscriberRegistered, uint256 indexSubscription) internal {
+        for (
+            uint256 i = indexSubscription;
+            i < subscribersRegistered[indexSubscriberRegistered].subscriptions.length - 1;
+            i++
+        ) {
+            subscribersRegistered[indexSubscriberRegistered].subscriptions[i] =
+                subscribersRegistered[indexSubscriberRegistered].subscriptions[i + 1];
+        }
+
+        subscribersRegistered[indexSubscriberRegistered].subscriptions.pop();
     }
 }
