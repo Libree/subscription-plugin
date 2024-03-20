@@ -41,7 +41,6 @@ contract SubscriptionToken is
     }
 
     function initialize(
-        address initialOwner,
         string memory name,
         string memory symbol,
         string memory metadataUri,
@@ -51,9 +50,10 @@ contract SubscriptionToken is
         __ERC721_init(name, symbol);
         __ERC721URIStorage_init();
         __ERC721Burnable_init();
-        __Ownable_init(initialOwner);
+        __Ownable_init();
         __UUPSUpgradeable_init();
         _minter = minter;
+
         metadataUri = metadataUri;
 
         (uint256 period, uint256 amount, address token) = abi.decode(data, (uint256, uint256, address));
@@ -78,6 +78,10 @@ contract SubscriptionToken is
         returns (string memory)
     {
         return super.tokenURI(tokenId);
+    }
+
+    function _burn(uint256 tokenId) internal override(ERC721Upgradeable, ERC721URIStorageUpgradeable) {
+        super._burn(tokenId);
     }
 
     function supportsInterface(bytes4 interfaceId)
