@@ -144,6 +144,14 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
         (SubscriptionToken subscriptionToken, SubscriptionDetails memory subscriptionDetails) =
             _getSubscriptionDetails(service);
 
+        if (!subscriptions[service].isInitialized) {
+            revert SubscriptionNotFound(service);
+        }
+
+        if (!isSubscribed(service, msg.sender)) {
+            revert AccountNotSubscribed(msg.sender, service);
+        }
+
         if (!isPaymentDue(service, msg.sender)) {
             revert SubscriptionIsActive(
                 msg.sender, service, subscriptions[service].subscribers[msg.sender].lastPayment, block.timestamp
@@ -172,14 +180,6 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
      */
     function isPaymentDue(address service, address account) public view returns (bool) {
         (, SubscriptionDetails memory subscriptionDetails) = _getSubscriptionDetails(service);
-
-        if (!subscriptions[service].isInitialized) {
-            revert SubscriptionNotFound(service);
-        }
-
-        if (!isSubscribed(service, account)) {
-            revert AccountNotSubscribed(account, service);
-        }
 
         return subscriptionDetails.period + subscriptions[service].subscribers[account].lastPayment < block.timestamp;
     }

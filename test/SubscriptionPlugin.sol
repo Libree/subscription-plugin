@@ -340,21 +340,6 @@ contract SubscriptionPluginTest is Test {
         assertFalse(subscriptionPlugin.isPaymentDue(subscriptionTokenProxy, smartAccount));
     }
 
-    function testServiceNotFound() public {
-        address subscriber = vm.addr(2);
-        deal(subscriber, 1 ether);
-
-        vm.startPrank(subscriber);
-
-        address smartAccount = _getSmartAccount(subscriber);
-
-        vm.stopPrank();
-
-        bytes4 selector = bytes4(keccak256("SubscriptionNotFound(address)"));
-        vm.expectRevert(abi.encodeWithSelector(selector, address(subscriptionTokenProxy)));
-        subscriptionPlugin.isPaymentDue(address(subscriptionTokenProxy), smartAccount);
-    }
-
     function testAccountIsNotSubscribed() public {
         address subscriber = vm.addr(2);
         vm.startPrank(subscriber);
@@ -381,9 +366,8 @@ contract SubscriptionPluginTest is Test {
 
         vm.stopPrank();
 
-        bytes4 selector = bytes4(keccak256("AccountNotSubscribed(address,address)"));
-        vm.expectRevert(abi.encodeWithSelector(selector, smartAccount2, address(subscriptionTokenProxy)));
-        assertFalse(subscriptionPlugin.isPaymentDue(subscriptionTokenProxy, smartAccount2));
+        assertTrue(subscriptionPlugin.isPaymentDue(subscriptionTokenProxy, smartAccount2));
+        assertFalse(subscriptionPlugin.isSubscribed(subscriptionTokenProxy, smartAccount2));
     }
 
     function testPaySubscription() public {
