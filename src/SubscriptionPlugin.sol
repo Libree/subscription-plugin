@@ -30,14 +30,8 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
         uint256 lastPayment;
     }
 
-    struct SubscriberRegistered {
-        address account;
-        address[] subscriptions;
-    }
-
     struct Subscription {
         mapping(address => Subscriber) subscribers;
-        bool isInitialized;
     }
 
     // this is a constant used in the manifest, to reference our only dependency: the multi owner plugin
@@ -46,10 +40,9 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
     // in other words, we'll say "make sure the person calling increment is an owner of the account using our multiowner plugin"
     uint256 internal constant _MANIFEST_DEPENDENCY_INDEX_OWNER_USER_OP_VALIDATION = 0;
 
-    SubscriberRegistered[] subscribersRegistered;
-
     // subscribed to nft
     mapping(address => Subscription) private subscriptions;
+    mapping(address => address[])private userSubscriptions;
 
     // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
     // ┃    Execution functions    ┃
@@ -64,7 +57,7 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
             _getSubscriptionDetails(service);
         Subscription storage subscription = subscriptions[service];
 
-        if (subscription.isInitialized && isSubscribed(service, msg.sender)) {
+        if (isSubscribed(service, msg.sender)) {
             revert AlreadySubscribed(msg.sender, service, subscription.subscribers[msg.sender].tokenId);
         }
 
@@ -82,22 +75,12 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
 
         uint256 tokenId = subscriptionToken.safeMint(msg.sender);
 
-        if (!subscription.isInitialized) {
-            subscription.isInitialized = true;
-        }
+        subscription.subscribers[msg.sender] = Subscriber({
+            tokenId: tokenId, 
+            lastPayment: block.timestamp
+        });
 
-        subscription.subscribers[msg.sender].tokenId = tokenId;
-        subscription.subscribers[msg.sender].lastPayment = block.timestamp;
-
-        (SubscriberRegistered memory subscriberRegistered, uint256 index) = _findSubscriberRegistered(msg.sender);
-
-        if (subscriberRegistered.subscriptions.length == 0) {
-            subscriberRegistered.account = msg.sender;
-            subscribersRegistered.push(subscriberRegistered);
-            subscribersRegistered[subscribersRegistered.length - 1].subscriptions.push(service);
-        } else {
-            subscribersRegistered[index].subscriptions.push(service);
-        }
+        userSubscriptions[msg.sender].push(service);
 
         emit AccountSubscribed(service, msg.sender, tokenId);
     }
@@ -106,32 +89,22 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
      * @notice sender unsubscribe to a subcription
      * @param service subscription which sender will unsubscribe
      */
-    function unsubscribe(address service) external {
-        Subscription storage subscription = subscriptions[service];
-
-        if (!subscription.isInitialized) {
-            revert SubscriptionNotFound(service);
-        }
-
+    function unsubscribe(address service) public {
         if (!isSubscribed(service, msg.sender)) {
             revert AccountNotSubscribed(msg.sender, service);
         }
 
-        for (uint256 i = 0; i < subscribersRegistered.length; i++) {
-            if (subscribersRegistered[i].account == msg.sender) {
-                address[] memory subscriptionsRegistered = subscribersRegistered[i].subscriptions;
-
-                for (uint256 c = 0; c < subscriptionsRegistered.length; c++) {
-                    if (subscriptionsRegistered[c] == service) {
-                        _removeSubscription(i, c);
-                    }
-                }
+        address[] storage currentSubscriptions = userSubscriptions[msg.sender];
+        for (uint i = 0; i < currentSubscriptions.length; i++) {
+            if (currentSubscriptions[i] == service) {
+                currentSubscriptions[i] = currentSubscriptions[currentSubscriptions.length - 1];
+                currentSubscriptions.pop();
+                break;
             }
         }
 
-        uint256 tokenId = subscription.subscribers[msg.sender].tokenId;
-
-        delete subscription.subscribers[msg.sender];
+        uint256 tokenId = subscriptions[service].subscribers[msg.sender].tokenId;
+        delete subscriptions[service].subscribers[msg.sender];
 
         emit AccountUnsubscribed(msg.sender, service, tokenId);
     }
@@ -143,10 +116,6 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
     function paySubscription(address service) external {
         (SubscriptionToken subscriptionToken, SubscriptionDetails memory subscriptionDetails) =
             _getSubscriptionDetails(service);
-
-        if (!subscriptions[service].isInitialized) {
-            revert SubscriptionNotFound(service);
-        }
 
         if (!isSubscribed(service, msg.sender)) {
             revert AccountNotSubscribed(msg.sender, service);
@@ -193,15 +162,6 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
         return subscriptions[service].subscribers[account].lastPayment > 0;
     }
 
-    /**
-     * @notice list all the subscriptions that belong to the sender
-     */
-    function getAcccountDetails() public view returns (SubscriberRegistered memory) {
-        (SubscriberRegistered memory subscriber,) = _findSubscriberRegistered(msg.sender);
-
-        return subscriber;
-    }
-
     // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
     // ┃    Plugin interface functions    ┃
     // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
@@ -211,16 +171,8 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
 
     /// @inheritdoc BasePlugin
     function onUninstall(bytes calldata) external override {
-        for (uint256 i = 0; i < subscribersRegistered.length; i++) {
-            if (subscribersRegistered[i].account == msg.sender) {
-                address[] memory subscriptionsRegistered = subscribersRegistered[i].subscriptions;
-
-                for (uint256 c = 0; c < subscriptionsRegistered.length; c++) {
-                    delete subscriptions[subscriptionsRegistered[c]].subscribers[msg.sender];
-                }
-            }
-
-            _removeSubscriberRegistered(i);
+        while(userSubscriptions[msg.sender].length > 0){
+            unsubscribe(userSubscriptions[msg.sender][0]);
         }
     }
 
@@ -302,21 +254,6 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
         return metadata;
     }
 
-    function _findSubscriberRegistered(address account) internal view returns (SubscriberRegistered memory, uint256) {
-        SubscriberRegistered memory subscriberRegistered;
-
-        uint256 i = 0;
-
-        for (i = 0; i < subscribersRegistered.length; i++) {
-            if (subscribersRegistered[i].account == account) {
-                subscriberRegistered = subscribersRegistered[i];
-                break;
-            }
-        }
-
-        return (subscriberRegistered, i);
-    }
-
     function _getSubscriptionDetails(address subscription)
         internal
         view
@@ -333,26 +270,5 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
         } catch {
             revert NotValidSubscriptionNFT(subscription);
         }
-    }
-
-    function _removeSubscriberRegistered(uint256 index) internal {
-        for (uint256 i = index; i < subscribersRegistered.length - 1; i++) {
-            subscribersRegistered[i] = subscribersRegistered[i + 1];
-        }
-
-        subscribersRegistered.pop();
-    }
-
-    function _removeSubscription(uint256 indexSubscriberRegistered, uint256 indexSubscription) internal {
-        for (
-            uint256 i = indexSubscription;
-            i < subscribersRegistered[indexSubscriberRegistered].subscriptions.length - 1;
-            i++
-        ) {
-            subscribersRegistered[indexSubscriberRegistered].subscriptions[i] =
-                subscribersRegistered[indexSubscriberRegistered].subscriptions[i + 1];
-        }
-
-        subscribersRegistered[indexSubscriberRegistered].subscriptions.pop();
     }
 }
