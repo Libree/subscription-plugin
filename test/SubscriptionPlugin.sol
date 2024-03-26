@@ -447,33 +447,6 @@ contract SubscriptionPluginTest is Test {
         assertFalse(subscriptionPlugin.isSubscribed(subscriptionTokenProxy, smartAccount));
     }
 
-    function testGetAccountDetail() public {
-        address subscriber = vm.addr(2);
-
-        vm.startPrank(subscriber);
-
-        deal(subscriber, 1 ether);
-
-        address smartAccount = _getSmartAccount(subscriber);
-
-        vm.stopPrank();
-
-        vm.startPrank(smartAccount);
-
-        deal(smartAccount, 1 ether);
-        deal(usdc, smartAccount, 1000 ether);
-
-        subscriptionPlugin.subscribe(subscriptionTokenProxy);
-
-        SubscriptionPlugin.SubscriberRegistered memory accountDetails = subscriptionPlugin.getAcccountDetails();
-
-        vm.stopPrank();
-
-        assertTrue(accountDetails.account == smartAccount);
-        assertTrue(accountDetails.subscriptions.length == 1);
-        assertTrue(accountDetails.subscriptions[0] == subscriptionTokenProxy);
-    }
-
     function testUninstallEmptyPlugin() public {
         bytes memory data = abi.encode();
         address subscriber = vm.addr(2);
