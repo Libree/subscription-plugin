@@ -13,40 +13,35 @@ import {
 } from "modular-account/src/interfaces/IPlugin.sol";
 import {IMultiOwnerPlugin} from "modular-account/src/plugins/owner/IMultiOwnerPlugin.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {SubscriptionToken, SubscriptionDetails} from "./SubscriptionToken.sol";
 import {ISubscriptionPlugin} from "./interfaces/ISubscriptionPlugin.sol";
 
 /// @title SubscriptionPlugin
 /// @author Libree
 /// @notice This plugin lets us subscribe to services!
-contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
+contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin, Ownable2Step {
     // metadata used by the pluginMetadata() method down below
     string public constant NAME = "Subscription Plugin";
     string public constant VERSION = "1.0.0";
     string public constant AUTHOR = "Libree";
-
-    struct Subscriber {
-        uint256 tokenId;
-        uint256 lastPayment;
-    }
-
-    struct Subscription {
-        mapping(address => Subscriber) subscribers;
-    }
+    uint16 public constant FEE = 100; // 1%
 
     // this is a constant used in the manifest, to reference our only dependency: the multi owner plugin
     // since it is the first, and only, plugin the index 0 will reference the multi owner plugin
     // we can use this to tell the modular account that we should use the multi owner plugin to validate our user op
     // in other words, we'll say "make sure the person calling increment is an owner of the account using our multiowner plugin"
     uint256 internal constant _MANIFEST_DEPENDENCY_INDEX_OWNER_USER_OP_VALIDATION = 0;
-
-    // subscribed to nft
-    mapping(address => Subscription) private subscriptions;
-    mapping(address => address[])private userSubscriptions;
+    
+    mapping(address => mapping(address => bool)) public subscriptions;
+    mapping(address => address[]) public userSubscriptions;
 
     // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
     // ┃    Execution functions    ┃
     // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+
+    constructor() Ownable2Step() {}
 
     /**
      * @notice sender subscribe to a subcription
@@ -55,10 +50,9 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
     function subscribe(address service) external {
         (SubscriptionToken subscriptionToken, SubscriptionDetails memory subscriptionDetails) =
             _getSubscriptionDetails(service);
-        Subscription storage subscription = subscriptions[service];
 
         if (isSubscribed(service, msg.sender)) {
-            revert AlreadySubscribed(msg.sender, service, subscription.subscribers[msg.sender].tokenId);
+            revert AlreadySubscribed(msg.sender, service);
         }
 
         uint256 accountBalance = IERC20(subscriptionDetails.token).balanceOf(msg.sender);
@@ -67,22 +61,14 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
             revert InsufficientBalance();
         }
 
-        IPluginExecutor(msg.sender).executeFromPluginExternal(
-            address(subscriptionDetails.token),
-            0,
-            abi.encodeCall(IERC20.transfer, (subscriptionToken.owner(), subscriptionDetails.amount))
-        );
+        _sendPayment(subscriptionDetails.token, subscriptionToken.owner(), subscriptionDetails.amount);
 
-        uint256 tokenId = subscriptionToken.safeMint(msg.sender);
-
-        subscription.subscribers[msg.sender] = Subscriber({
-            tokenId: tokenId, 
-            lastPayment: block.timestamp
-        });
+        SubscriptionToken(service).updatePayment(msg.sender, block.timestamp);
 
         userSubscriptions[msg.sender].push(service);
+        subscriptions[service][msg.sender] = true;
 
-        emit AccountSubscribed(service, msg.sender, tokenId);
+        emit AccountSubscribed(service, msg.sender);
     }
 
     /**
@@ -103,10 +89,9 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
             }
         }
 
-        uint256 tokenId = subscriptions[service].subscribers[msg.sender].tokenId;
-        delete subscriptions[service].subscribers[msg.sender];
+        delete subscriptions[service][msg.sender];
 
-        emit AccountUnsubscribed(msg.sender, service, tokenId);
+        emit AccountUnsubscribed(msg.sender, service);
     }
 
     /**
@@ -123,19 +108,50 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
 
         if (!isPaymentDue(service, msg.sender)) {
             revert SubscriptionIsActive(
-                msg.sender, service, subscriptions[service].subscribers[msg.sender].lastPayment, block.timestamp
+                msg.sender, service, SubscriptionToken(service).getPayment(msg.sender), block.timestamp
             );
         }
 
+        _sendPayment(subscriptionDetails.token, subscriptionToken.owner(), subscriptionDetails.amount);
+
+        SubscriptionToken(service).updatePayment(msg.sender, block.timestamp);
+
+        emit SubscriptionPayment(service, msg.sender);
+    }
+
+    function withdraw (address token, uint256 amount, address destination) external onlyOwner {
+        IERC20(token).transfer(destination, amount);
+    }
+
+
+    /**
+     * @dev Internal function to send payment to the subscription owner.
+     * @param paymentToken The address of the payment token.
+     * @param subscriptionOwner The address of the subscription owner.
+     * @param paymentAmount The amount of payment to be sent.
+     */
+    function _sendPayment(address paymentToken, address subscriptionOwner, uint256 paymentAmount) internal {
+        uint256 feeAmount;
+        uint256 netPayment = paymentAmount; 
+
+        if (FEE > 0) {
+            feeAmount = (paymentAmount * FEE) / 1e4;
+            netPayment = paymentAmount - feeAmount;
+
+            // Transfer the fee amount to the plugin contract
+            IPluginExecutor(msg.sender).executeFromPluginExternal(
+                address(paymentToken),
+                0,
+                abi.encodeCall(IERC20.transfer, (address(this), feeAmount))
+            );
+        }
+
+        // Transfer the net payment amount to the subscription owner
         IPluginExecutor(msg.sender).executeFromPluginExternal(
-            address(subscriptionDetails.token),
+            address(paymentToken),
             0,
-            abi.encodeCall(IERC20.transfer, (subscriptionToken.owner(), subscriptionDetails.amount))
+            abi.encodeCall(IERC20.transfer, (subscriptionOwner, netPayment))
         );
-
-        subscriptions[service].subscribers[msg.sender].lastPayment = block.timestamp;
-
-        emit SubscriptionPayment(service, msg.sender, subscriptions[service].subscribers[msg.sender].tokenId);
     }
 
     // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -148,9 +164,7 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
      * @param account account to check
      */
     function isPaymentDue(address service, address account) public view returns (bool) {
-        (, SubscriptionDetails memory subscriptionDetails) = _getSubscriptionDetails(service);
-
-        return subscriptionDetails.period + subscriptions[service].subscribers[account].lastPayment < block.timestamp;
+        return SubscriptionToken(service).getPayment(account) < block.timestamp;
     }
 
     /**
@@ -159,7 +173,7 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
      * @param account account to check
      */
     function isSubscribed(address service, address account) public view returns (bool) {
-        return subscriptions[service].subscribers[account].lastPayment > 0;
+        return subscriptions[service][account];
     }
 
     // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -254,19 +268,27 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin {
         return metadata;
     }
 
+    /**
+     * @dev Retrieves the subscription details for a given subscription address.
+     * @param subscription The address of the subscription.
+     * @return subscriptionToken The subscription token associated with the subscription address.
+     * @return subscriptionDetails The details of the subscription.
+     * @dev Throws a `NotValidAddress` error if the subscription address is not valid.
+     * @dev Throws a `NotValidSubscriptionNFT` error if the subscription token is not a valid subscription NFT.
+     */
     function _getSubscriptionDetails(address subscription)
         internal
         view
-        returns (SubscriptionToken, SubscriptionDetails memory)
+        returns (SubscriptionToken subscriptionToken, SubscriptionDetails memory subscriptionDetails)
     {
         if (subscription.code.length == 0) {
             revert NotValidAddress(subscription);
         }
 
-        SubscriptionToken subscriptionToken = SubscriptionToken(subscription);
+        subscriptionToken = SubscriptionToken(subscription);
 
-        try subscriptionToken.getSubscriptionDetails() returns (SubscriptionDetails memory subscriptionDetails) {
-            return (subscriptionToken, subscriptionDetails);
+        try subscriptionToken.getSubscriptionDetails() returns (SubscriptionDetails memory details) {
+            return (subscriptionToken, details);
         } catch {
             revert NotValidSubscriptionNFT(subscription);
         }

@@ -15,9 +15,8 @@ interface ISubscriptionPlugin {
      * @dev This event is emitted when a new subscriber of NFT is added
      * @param subscription subscription address
      * @param account account to subscribe to the subscription
-     * @param subscriptionId the subscription id which is equal to tokenId
      */
-    event AccountSubscribed(address subscription, address account, uint256 subscriptionId);
+    event AccountSubscribed(address subscription, address account);
 
     /**
      *
@@ -25,25 +24,23 @@ interface ISubscriptionPlugin {
      * @dev This event is emitted when a subscriber of NFT is removed
      * @param subscription subscription address
      * @param account account to unsubscribe to the subscription
-     * @param subscriptionId the subscription id which is equal to tokenId
      */
-    event AccountUnsubscribed(address subscription, address account, uint256 subscriptionId);
+    event AccountUnsubscribed(address subscription, address account);
 
     /**
      * @notice Emitted when user update subscription payment
      * @dev This event is emitted when payment is updated
      * @param subscription subscription address
      * @param account account to unsubscribe to the subscription
-     * @param subscriptionId the subscription id which is equal to tokenId
      */
-    event SubscriptionPayment(address subscription, address account, uint256 subscriptionId);
+    event SubscriptionPayment(address subscription, address account);
 
     // error handlers
 
     error NotValidAddress(address subscription);
     error NotValidSubscriptionNFT(address subscription);
     error InsufficientBalance();
-    error AlreadySubscribed(address account, address subscription, uint256 tokenId);
+    error AlreadySubscribed(address account, address subscription);
     error AlreadyUnsubscribed(address account, address subscription);
     error AccountNotSubscribed(address account, address subscription);
     error SubscriptionNotFound(address subscription);

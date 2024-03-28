@@ -5,6 +5,7 @@ import {Test, StdUtils} from "forge-std/Test.sol";
 import {SubscriptionToken} from "../src/SubscriptionToken.sol";
 import {SubscriptionPlugin} from "../src/SubscriptionPlugin.sol";
 import {ISubscriptionPlugin} from "../src/interfaces/ISubscriptionPlugin.sol";
+import {ISubscriptionToken} from "../src/interfaces/ISubscriptionToken.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -16,6 +17,7 @@ import {FunctionReference} from "modular-account/src/interfaces/IPluginManager.s
 import {EntryPoint} from "@eth-infinitism/account-abstraction/core/EntryPoint.sol";
 import {IMultiOwnerPlugin} from "modular-account/src/plugins/owner/IMultiOwnerPlugin.sol";
 import {MultiOwnerPlugin} from "modular-account/src/plugins/owner/MultiOwnerPlugin.sol";
+import {TestUSDC} from "./MockUSDC.sol";
 
 contract SubscriptionPluginTest is Test {
     address subscriptionTokenProxy;
@@ -23,7 +25,7 @@ contract SubscriptionPluginTest is Test {
     SubscriptionPlugin subscriptionPlugin;
 
     address owner = vm.addr(1);
-    address usdc = 0x52D800ca262522580CeBAD275395ca6e7598C014;
+    address usdc;
     IEntryPoint entryPoint = IEntryPoint(address(new EntryPoint()));
     MultiOwnerModularAccountFactory smartAccountFactory;
     MultiOwnerPlugin multiOwnerPlugin;
@@ -31,8 +33,6 @@ contract SubscriptionPluginTest is Test {
     function setUp() public {
         vm.startPrank(owner);
         deal(owner, 1 ether);
-
-        bytes memory data = abi.encode(30 days, 100, usdc);
 
         subscriptionPlugin = new SubscriptionPlugin();
 
@@ -49,6 +49,12 @@ contract SubscriptionPluginTest is Test {
         );
 
         subscriptionToken = new SubscriptionToken();
+
+        TestUSDC testUSDC = new TestUSDC();
+
+        usdc = address(testUSDC);
+
+        bytes memory data = abi.encode(30 days, 100000000, usdc);
 
         subscriptionTokenProxy = address(
             new ERC1967Proxy(
@@ -233,8 +239,8 @@ contract SubscriptionPluginTest is Test {
 
         subscriptionPlugin.subscribe(subscriptionTokenProxy);
 
-        bytes4 selector = bytes4(keccak256("AlreadySubscribed(address,address,uint256)"));
-        vm.expectRevert(abi.encodeWithSelector(selector, smartAccount, subscriptionTokenProxy, 0));
+        bytes4 selector = bytes4(keccak256("AlreadySubscribed(address,address)"));
+        vm.expectRevert(abi.encodeWithSelector(selector, smartAccount, subscriptionTokenProxy));
 
         subscriptionPlugin.subscribe(subscriptionTokenProxy);
 
@@ -388,10 +394,24 @@ contract SubscriptionPluginTest is Test {
 
         vm.warp(block.timestamp + 40 days);
 
+        uint256 FEE = 100;
+
+        ISubscriptionToken.SubscriptionDetails memory details = ISubscriptionToken(subscriptionTokenProxy).getSubscriptionDetails();
+
+        uint256 feeAmount = (details.amount * FEE) / 1e4;
+        uint256 netPayment = details.amount - feeAmount;
+
+        uint256 balanceOwnerBefore = IERC20(usdc).balanceOf(SubscriptionToken(subscriptionTokenProxy).owner());
+        uint256 pluginBalanceBefore = IERC20(usdc).balanceOf(address(subscriptionPlugin));
         subscriptionPlugin.paySubscription(subscriptionTokenProxy);
+
+        uint256 balanceOwnerAfter = IERC20(usdc).balanceOf(SubscriptionToken(subscriptionTokenProxy).owner());
+        uint256 pluginBalanceAfter = IERC20(usdc).balanceOf(address(subscriptionPlugin));
 
         vm.stopPrank();
 
+        assertTrue(balanceOwnerBefore + netPayment == balanceOwnerAfter);
+        assertTrue(pluginBalanceAfter == pluginBalanceBefore + feeAmount);
         assertFalse(subscriptionPlugin.isPaymentDue(subscriptionTokenProxy, smartAccount));
     }
 
@@ -445,6 +465,88 @@ contract SubscriptionPluginTest is Test {
         vm.stopPrank();
 
         assertFalse(subscriptionPlugin.isSubscribed(subscriptionTokenProxy, smartAccount));
+    }
+
+    function testWithdrawNotAllowed() public {
+        address newOwner = vm.addr(4);
+        address noOwner = vm.addr(5);
+        vm.startPrank(owner);
+
+        subscriptionPlugin.transferOwnership(newOwner);
+        vm.stopPrank();
+
+        vm.startPrank(newOwner);
+
+        subscriptionPlugin.acceptOwnership();
+
+        vm.stopPrank();
+
+        vm.startPrank(noOwner);
+
+        vm.expectRevert(bytes("Ownable: caller is not the owner"));
+
+        subscriptionPlugin.withdraw(usdc, 10, address(this));
+
+        vm.stopPrank();
+    }
+
+    function testWithdraw() public {
+        address subscriber = vm.addr(2);
+        vm.startPrank(subscriber);
+        deal(subscriber, 1 ether);
+
+        address smartAccount = _getSmartAccount(subscriber);
+
+        vm.stopPrank();
+
+        vm.startPrank(smartAccount);
+
+        deal(smartAccount, 1 ether);
+        deal(usdc, smartAccount, 1000 ether);
+
+        subscriptionPlugin.subscribe(subscriptionTokenProxy);
+
+        vm.warp(block.timestamp + 40 days);
+
+        uint256 FEE = 100;
+
+        ISubscriptionToken.SubscriptionDetails memory details = ISubscriptionToken(subscriptionTokenProxy).getSubscriptionDetails();
+
+        uint256 feeAmount = (details.amount * FEE) / 1e4;
+        uint256 netPayment = details.amount - feeAmount;
+
+        uint256 balanceOwnerBefore = IERC20(usdc).balanceOf(SubscriptionToken(subscriptionTokenProxy).owner());
+        uint256 pluginBalanceBefore = IERC20(usdc).balanceOf(address(subscriptionPlugin));
+        subscriptionPlugin.paySubscription(subscriptionTokenProxy);
+
+        uint256 balanceOwnerAfter = IERC20(usdc).balanceOf(SubscriptionToken(subscriptionTokenProxy).owner());
+        uint256 pluginBalanceAfter = IERC20(usdc).balanceOf(address(subscriptionPlugin));
+
+        vm.stopPrank();
+
+        assertTrue(balanceOwnerBefore + netPayment == balanceOwnerAfter);
+        assertTrue(pluginBalanceAfter == pluginBalanceBefore + feeAmount);
+        assertFalse(subscriptionPlugin.isPaymentDue(subscriptionTokenProxy, smartAccount));
+        address newOwner = vm.addr(4);
+
+        vm.startPrank(owner);
+
+        subscriptionPlugin.transferOwnership(newOwner);
+
+        vm.stopPrank();
+
+        vm.startPrank(newOwner);
+        subscriptionPlugin.acceptOwnership();
+
+        uint256 balanceBefore = IERC20(usdc).balanceOf(newOwner);
+
+        subscriptionPlugin.withdraw(usdc, 1000, newOwner);
+
+        uint256 balanceAfter = IERC20(usdc).balanceOf(newOwner);
+
+        assertTrue(balanceAfter == balanceBefore + 1000);
+
+        vm.stopPrank();
     }
 
     function testUninstallEmptyPlugin() public {
