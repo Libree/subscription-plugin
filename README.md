@@ -1,17 +1,27 @@
-## Foundry
+# Libree subscription Plugin
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+## Core features
 
-Foundry consists of:
+1 - Subscription Setup:
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+- Users can subscribe to services and set up recurring subscription payments.
 
-## Documentation
+2 - Automatic Payment:
 
-https://book.getfoundry.sh/
+- The plugin provides a function to trigger subscription payments when they are due.
+
+3 - NFT Subscription Tokens:
+
+- Subscribers receive an NFT that represents the service they are subscribed to. This NFT can be used in token gating systems.
+
+4- Plugin Restrictions:
+
+- The plugin cannot be uninstalled if there are active subscriptions. Any active subscriptions will be automatically unsubscribed if uninstallation is attempted.
+
+## Author
+
+[<picture><img src="./assets/Libree-logo.png" alt="Libree Logo" width="340" height="200"></picture>](https://www.libree.xyz)
+
 
 ## Usage
 
@@ -25,42 +35,4 @@ $ forge build
 
 ```shell
 $ forge test
-```
-
-### Format
-
-```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
 ```

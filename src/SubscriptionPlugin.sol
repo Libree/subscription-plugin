@@ -13,6 +13,7 @@ import {
 } from "modular-account/src/interfaces/IPlugin.sol";
 import {IMultiOwnerPlugin} from "modular-account/src/plugins/owner/IMultiOwnerPlugin.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {SubscriptionToken, SubscriptionDetails} from "./SubscriptionToken.sol";
 import {ISubscriptionPlugin} from "./interfaces/ISubscriptionPlugin.sol";
@@ -40,6 +41,7 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin, Ownable2Step {
     // ┃    Execution functions    ┃
     // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
+    using SafeERC20 for IERC20;
 
     constructor() Ownable2Step() {}
 
@@ -120,7 +122,7 @@ contract SubscriptionPlugin is BasePlugin, ISubscriptionPlugin, Ownable2Step {
     }
 
     function withdraw (address token, uint256 amount, address destination) external onlyOwner {
-        IERC20(token).transfer(destination, amount);
+        IERC20(token).safeTransfer(destination, amount);
     }
 
 
